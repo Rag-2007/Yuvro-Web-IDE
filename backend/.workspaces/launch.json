@@ -1,0 +1,8 @@
+{
+  "manage.py": "python manage.py runserver",
+  "main.py": "python main.py",
+  "app.py": "python app.py",
+  "index.js": "node index.js",
+  "server.js": "node server.js",
+  "app.js": "node app.js"
+}
