@@ -32,12 +32,12 @@ graph TD
     API -->|MongoDB Query / CRUD| Mongo[(MongoDB Instance)]
     PTY -->|Spawn Process Group| OS[(Host OS / Shell)]
     
-    subgraph Storage & Namespaces (.workspaces/<userId>/)
+    subgraph "Storage & Namespaces (.workspaces/<userId>/)"
         FS
         SQLite
     end
     
-    subgraph External Connections
+    subgraph "External Connections"
         Mongo
     end
 ```
