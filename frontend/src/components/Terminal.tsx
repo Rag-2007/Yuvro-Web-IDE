@@ -89,7 +89,11 @@ const TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({ projectName,
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    const socket = io('http://localhost:3000');
+    const socket = io('http://localhost:3000', {
+      auth: {
+        token: localStorage.getItem('yuvro_token'),
+      },
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {

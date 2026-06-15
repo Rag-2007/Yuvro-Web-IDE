@@ -1,0 +1,17 @@
+[
+  {
+    "id": "conn_sqlite_todo",
+    "name": "SQLite Todo DB",
+    "type": "sqlite",
+    "filePath": "todo.db",
+    "createdAt": "2026-06-15T22:23:00.000Z"
+  },
+  {
+    "id": "conn_mongodb_todo",
+    "name": "MongoDB Todo DB",
+    "type": "mongodb",
+    "uri": "mongodb://localhost:27017",
+    "dbName": "todo_db",
+    "createdAt": "2026-06-15T22:23:00.000Z"
+  }
+]

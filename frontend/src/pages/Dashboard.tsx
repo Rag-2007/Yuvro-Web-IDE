@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { getProjects, deleteProject, createProject, cloneProject, uploadProject } from '../api';
-import { Folder, Plus, GitBranch, Upload, ChevronRight, ArrowLeft, Trash2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Folder, Plus, GitBranch, Upload, ChevronRight, ArrowLeft, Trash2, LogOut, User } from 'lucide-react';
 import QuickInput from '../components/QuickInput';
 
 export default function Dashboard({ onSelectProject }: { onSelectProject: (name: string) => void }) {
+  const { user, logout } = useAuth();
   const [projects, setProjects] = useState<{ name: string }[]>([]);
   const [view, setView] = useState<'list' | 'create' | 'clone' | 'upload'>('list');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -14,75 +16,45 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
   const [error, setError] = useState('');
 
   const loadProjects = () => {
-    getProjects()
-      .then(data => setProjects(data))
-      .catch(() => setProjects([]));
+    getProjects().then(data => setProjects(data)).catch(() => setProjects([]));
   };
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  useEffect(() => { loadProjects(); }, []);
 
-  const resetForm = () => {
-    setProjectName('');
-    setRepoUrl('');
-    setFile(null);
-    setError('');
-  };
+  const resetForm = () => { setProjectName(''); setRepoUrl(''); setFile(null); setError(''); };
 
   const handleCreate = async () => {
     if (!projectName.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      await createProject(projectName.trim());
-      onSelectProject(projectName.trim());
-    } catch {
-      setError('Failed to create project. Name may already exist.');
-    }
+    setLoading(true); setError('');
+    try { await createProject(projectName.trim()); onSelectProject(projectName.trim()); }
+    catch { setError('Failed to create project. Name may already exist.'); }
     setLoading(false);
   };
 
   const handleClone = async () => {
     if (!projectName.trim() || !repoUrl.trim()) return;
-    setLoading(true);
-    setError('');
-    try {
-      await cloneProject(projectName.trim(), repoUrl.trim());
-      onSelectProject(projectName.trim());
-    } catch {
-      setError('Failed to clone. Check the repository URL and try again.');
-    }
+    setLoading(true); setError('');
+    try { await cloneProject(projectName.trim(), repoUrl.trim()); onSelectProject(projectName.trim()); }
+    catch { setError('Failed to clone. Check the repository URL and try again.'); }
     setLoading(false);
   };
 
   const handleUpload = async () => {
     if (!projectName.trim() || !file) return;
-    setLoading(true);
-    setError('');
-    try {
-      await uploadProject(projectName.trim(), file);
-      onSelectProject(projectName.trim());
-    } catch {
-      setError('Failed to upload project. Ensure it is a valid zip file.');
-    }
+    setLoading(true); setError('');
+    try { await uploadProject(projectName.trim(), file); onSelectProject(projectName.trim()); }
+    catch { setError('Failed to upload project. Ensure it is a valid zip file.'); }
     setLoading(false);
   };
 
-  const handleDeleteClick = (name: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeleteTarget(name);
-  };
-
+  const handleDeleteClick = (name: string, e: React.MouseEvent) => { e.stopPropagation(); setDeleteTarget(name); };
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
-    try {
-      await deleteProject(deleteTarget);
-      loadProjects();
-    } catch {
-    }
+    try { await deleteProject(deleteTarget); loadProjects(); } catch {}
     setDeleteTarget(null);
   };
+
+  const initials = user?.email ? user.email[0].toUpperCase() : '?';
 
   return (
     <div className="dashboard">
@@ -97,13 +69,35 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
         onCancel={() => setDeleteTarget(null)}
       />
 
-      <div className="dashboard-logo">
-        <img src="/yuvro.png" alt="Yuvro Logo" className="dashboard-logo-img" />
-        <div className="dashboard-logo-text">
-          <span className="dashboard-logo-brand">Yuvro</span>
-          <span className="dashboard-logo-product">Web-IDE</span>
+      {/* Header */}
+      <div className="dashboard-header">
+        <div className="dashboard-logo">
+          <img src="/yuvro.png" alt="Yuvro Logo" className="dashboard-logo-img" />
+          <div className="dashboard-logo-text">
+            <span className="dashboard-logo-brand">Yuvro</span>
+            <span className="dashboard-logo-product">Web-IDE</span>
+          </div>
+        </div>
+        <div className="dashboard-user-bar">
+          <div className="dashboard-user-info">
+            <div className="dashboard-avatar">{initials}</div>
+            <div className="dashboard-user-details">
+              <span className="dashboard-user-email">{user?.email}</span>
+              <span className="dashboard-user-label">Developer</span>
+            </div>
+          </div>
+          <button
+            id="dashboard-logout-btn"
+            className="dashboard-logout-btn"
+            onClick={logout}
+            title="Sign out"
+          >
+            <LogOut size={14} />
+            <span>Sign out</span>
+          </button>
         </div>
       </div>
+
       <p className="dashboard-subtitle">A full-featured browser-based development environment</p>
 
       <div className="dashboard-card">
@@ -124,7 +118,10 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
               </div>
             </div>
 
-            <div className="section-title">Recent Projects</div>
+            <div className="section-title">
+              <User size={14} style={{ display: 'inline', marginRight: '0.4rem', verticalAlign: 'middle' }} />
+              My Projects
+            </div>
             {projects.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '1rem 0' }}>
                 No projects yet. Create one above to get started.
@@ -138,11 +135,7 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
                       <span style={{ fontWeight: 500 }}>{p.name}</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <button
-                        className="project-delete-btn"
-                        title="Delete project"
-                        onClick={(e) => handleDeleteClick(p.name, e)}
-                      >
+                      <button className="project-delete-btn" title="Delete project" onClick={(e) => handleDeleteClick(p.name, e)}>
                         <Trash2 size={15} />
                       </button>
                       <ChevronRight size={16} color="var(--text-dim)" />
@@ -156,27 +149,15 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
 
         {view === 'create' && (
           <div>
-            <button className="back-btn" onClick={() => setView('list')}>
-              <ArrowLeft size={14} />
-              Back
-            </button>
+            <button className="back-btn" onClick={() => setView('list')}><ArrowLeft size={14} /> Back</button>
             <div className="section-title">Create Blank Project</div>
             <div className="form-group" style={{ marginTop: '0.75rem' }}>
               <label>Project Name</label>
-              <input
-                className="input"
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                placeholder="my-new-project"
-                onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
-                autoFocus
-              />
+              <input className="input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="my-new-project" onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} autoFocus />
             </div>
             {error && <div className="db-error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
             <div className="form-actions">
-              <button className="button" onClick={handleCreate} disabled={loading || !projectName.trim()}>
-                {loading ? 'Creating...' : 'Create Project'}
-              </button>
+              <button className="button" onClick={handleCreate} disabled={loading || !projectName.trim()}>{loading ? 'Creating...' : 'Create Project'}</button>
               <button className="button secondary" onClick={() => setView('list')}>Cancel</button>
             </div>
           </div>
@@ -184,42 +165,20 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
 
         {view === 'clone' && (
           <div>
-            <button className="back-btn" onClick={() => setView('list')}>
-              <ArrowLeft size={14} />
-              Back
-            </button>
+            <button className="back-btn" onClick={() => setView('list')}><ArrowLeft size={14} /> Back</button>
             <div className="section-title">Clone Repository</div>
             <div className="form-group" style={{ marginTop: '0.75rem' }}>
               <label>Project Name</label>
-              <input
-                className="input"
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                placeholder="my-cloned-project"
-                autoFocus
-              />
+              <input className="input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="my-cloned-project" autoFocus />
             </div>
             <div className="form-group">
-              <label>Repository URL (GitHub, GitLab, Bitbucket, or any Git URL)</label>
-              <input
-                className="input"
-                value={repoUrl}
-                onChange={e => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/username/repo.git"
-                onKeyDown={e => { if (e.key === 'Enter') handleClone(); }}
-              />
+              <label>Repository URL</label>
+              <input className="input" value={repoUrl} onChange={e => setRepoUrl(e.target.value)} placeholder="https://github.com/username/repo.git" onKeyDown={e => { if (e.key === 'Enter') handleClone(); }} />
             </div>
             {error && <div className="db-error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
-            {loading && (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div className="spinner" style={{ width: 14, height: 14 }} />
-                Cloning repository... this may take a moment
-              </div>
-            )}
+            {loading && <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><div className="spinner" style={{ width: 14, height: 14 }} /> Cloning repository…</div>}
             <div className="form-actions">
-              <button className="button" onClick={handleClone} disabled={loading || !projectName.trim() || !repoUrl.trim()}>
-                {loading ? 'Cloning...' : 'Clone Repository'}
-              </button>
+              <button className="button" onClick={handleClone} disabled={loading || !projectName.trim() || !repoUrl.trim()}>{loading ? 'Cloning...' : 'Clone Repository'}</button>
               <button className="button secondary" onClick={() => setView('list')}>Cancel</button>
             </div>
           </div>
@@ -227,35 +186,19 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
 
         {view === 'upload' && (
           <div>
-            <button className="back-btn" onClick={() => setView('list')}>
-              <ArrowLeft size={14} />
-              Back
-            </button>
+            <button className="back-btn" onClick={() => setView('list')}><ArrowLeft size={14} /> Back</button>
             <div className="section-title">Upload Project ZIP</div>
             <div className="form-group" style={{ marginTop: '0.75rem' }}>
               <label>Project Name</label>
-              <input
-                className="input"
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                placeholder="my-uploaded-project"
-                autoFocus
-              />
+              <input className="input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="my-uploaded-project" autoFocus />
             </div>
             <div className="form-group">
-              <label>Select ZIP File (your project from your computer)</label>
-              <input
-                type="file"
-                className="input"
-                accept=".zip"
-                onChange={e => setFile(e.target.files?.[0] ?? null)}
-              />
+              <label>Select ZIP File</label>
+              <input type="file" className="input" accept=".zip" onChange={e => setFile(e.target.files?.[0] ?? null)} />
             </div>
             {error && <div className="db-error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
             <div className="form-actions">
-              <button className="button" onClick={handleUpload} disabled={loading || !projectName.trim() || !file}>
-                {loading ? 'Uploading...' : 'Upload Project'}
-              </button>
+              <button className="button" onClick={handleUpload} disabled={loading || !projectName.trim() || !file}>{loading ? 'Uploading...' : 'Upload Project'}</button>
               <button className="button secondary" onClick={() => setView('list')}>Cancel</button>
             </div>
           </div>
