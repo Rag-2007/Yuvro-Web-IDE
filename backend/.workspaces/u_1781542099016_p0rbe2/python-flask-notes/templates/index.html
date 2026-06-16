@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Notes — Flask + SQLite</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"/>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">🗒️ Flask Notes</span>
+      <button class="btn" onclick="toggleForm()">+ New Note</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="note-form" class="note-form hidden">
+      <input id="n-title" class="input" placeholder="Note title…" />
+      <textarea id="n-content" class="input" rows="4" placeholder="Note content…"></textarea>
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem">
+        <label style="font-size:.8rem;color:#8b949e">Color:</label>
+        <input type="color" id="n-color" value="#7c83fd" style="width:36px;height:28px;border:none;background:none;cursor:pointer"/>
+      </div>
+      <div class="form-actions">
+        <button class="btn" onclick="saveNote()">Save Note</button>
+        <button class="btn secondary" onclick="toggleForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div id="notes-grid" class="notes-grid">
+      <div class="loading">Loading notes…</div>
+    </div>
+  </main>
+
+  <script>
+    const API = '/api/notes';
+    let notes = [];
+
+    async function loadNotes() {
+      const grid = document.getElementById('notes-grid');
+      try {
+        const res = await fetch(API);
+        notes = await res.json();
+        renderNotes();
+      } catch {
+        grid.innerHTML = '<div class="empty">⚠️ Cannot reach Flask server.</div>';
+      }
+    }
+
+    function renderNotes() {
+      const grid = document.getElementById('notes-grid');
+      if (!notes.length) { grid.innerHTML = '<div class="empty">No notes yet!</div>'; return; }
+      grid.innerHTML = notes.map(n => `
+        <div class="note-card" style="border-top:3px solid ${n.color}">
+          ${n.pinned ? '<span class="pin-badge">📌 Pinned</span>' : ''}
+          <div class="note-title">${esc(n.title)}</div>
+          <div class="note-content">${esc(n.content)}</div>
+          <div class="note-date">${new Date(n.created_at).toLocaleDateString()}</div>
+          <div class="note-actions">
+            <button class="btn secondary" onclick="togglePin(${n.id},${n.pinned})">${n.pinned ? 'Unpin' : 'Pin'}</button>
+            <button class="btn danger" onclick="deleteNote(${n.id})">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function saveNote() {
+      const title   = document.getElementById('n-title').value.trim();
+      const content = document.getElementById('n-content').value.trim();
+      const color   = document.getElementById('n-color').value;
+      if (!title || !content) return alert('Title and content required');
+      await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,content,color}) });
+      toggleForm();
+      loadNotes();
+    }
+
+    async function deleteNote(id) {
+      if (!confirm('Delete this note?')) return;
+      await fetch(`${API}/${id}`, { method:'DELETE' });
+      loadNotes();
+    }
+
+    async function togglePin(id, pinned) {
+      const note = notes.find(n => n.id === id);
+      await fetch(`${API}/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({...note, pinned: pinned ? 0 : 1}) });
+      loadNotes();
+    }
+
+    function toggleForm() {
+      const f = document.getElementById('note-form');
+      f.classList.toggle('hidden');
+    }
+
+    function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    loadNotes();
+  </script>
+</body>
+</html>

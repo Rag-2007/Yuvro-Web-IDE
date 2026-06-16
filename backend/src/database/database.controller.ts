@@ -135,4 +135,21 @@ export class DatabaseController {
   ) {
     return this.databaseService.mongoDelete(uri, dbName, collection, id);
   }
+
+  // ─── External DB (MySQL / PostgreSQL) ─────────────────────────────────────────
+
+  @Post(':project/external/test')
+  externalDbTest(@Body() body: any) {
+    return this.databaseService.externalDbTest(body);
+  }
+
+  @Post(':project/external/tables')
+  externalDbTables(@Body() body: any) {
+    return this.databaseService.externalDbTables(body);
+  }
+
+  @Post(':project/external/query')
+  externalDbQuery(@Body('conn') conn: any, @Body('query') query: string) {
+    return this.databaseService.externalDbQuery(conn, query);
+  }
 }

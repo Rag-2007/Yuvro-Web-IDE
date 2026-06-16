@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Blog — Node + Express</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">📰 DevBlog</div>
+      <button class="btn" onclick="showForm()">+ New Post</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="form-panel" class="form-panel hidden">
+      <h2>New Post</h2>
+      <input id="f-title" class="input" placeholder="Title" />
+      <input id="f-author" class="input" placeholder="Author" />
+      <input id="f-tags" class="input" placeholder="Tags (comma separated)" />
+      <textarea id="f-content" class="input" placeholder="Write your post content..." rows="5"></textarea>
+      <div class="form-actions">
+        <button class="btn" onclick="submitPost()">Publish</button>
+        <button class="btn secondary" onclick="hideForm()">Cancel</button>
+      </div>
+    </div>
+
+    <div id="posts" class="posts-grid"></div>
+  </main>
+
+  <script src="client.js"></script>
+</body>
+</html>

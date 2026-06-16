@@ -7,20 +7,20 @@ interface LivePreviewProps {
 }
 
 function extractPort(cmd: string): number {
+  if (!cmd) return 3000;
+  // Always prioritize frontend dev server port if we are running a fullstack/frontend project
+  if (cmd.includes('vite') || cmd.includes('npm run dev')) return 5174;
+  
   // Try --port XXXX or --port=XXXX
   const portFlag = cmd.match(/--port[=\s]+(\d+)/);
   if (portFlag) return parseInt(portFlag[1]);
-  // Try :XXXX pattern (e.g. --host 0.0.0.0 --port 8000)
-  const colonPort = cmd.match(/:(\d{4,5})\b/);
-  if (colonPort) return parseInt(colonPort[1]);
   // Defaults by framework keyword
   if (cmd.includes('runserver')) return 8000;
   if (cmd.includes('uvicorn')) return 8000;
   if (cmd.includes('flask') || cmd.includes('app.py')) return 5000;
-  if (cmd.includes('npm run dev') || cmd.includes('vite')) return 5173;
-  if (cmd.includes('npm start')) return 3000;
+  if (cmd.includes('npm start')) return 3000;     // Express → 3000
   if (cmd.includes('node')) return 3000;
-  return 8000;
+  return 3000;
 }
 
 export default function LivePreview({ runCommand, isRunning }: LivePreviewProps) {
@@ -63,9 +63,27 @@ export default function LivePreview({ runCommand, isRunning }: LivePreviewProps)
         <Monitor size={13} className="preview-icon" />
         <span className="preview-label">Live Preview</span>
 
-        {/* Auto-detected port badge — read-only, no URL bar */}
-        <span className="preview-port-badge">
-          :{port}
+        <span className="preview-port-badge" style={{ display: 'flex', alignItems: 'center', cursor: 'text' }}>
+          :
+          <input
+            type="number"
+            value={port}
+            onChange={(e) => setPort(Number(e.target.value))}
+            title="Edit Port"
+            style={{
+              width: '45px',
+              background: 'transparent',
+              border: 'none',
+              color: 'inherit',
+              outline: 'none',
+              fontFamily: 'inherit',
+              fontSize: 'inherit',
+              fontWeight: 'bold',
+              marginLeft: '2px',
+              padding: 0,
+              MozAppearance: 'textfield'
+            }}
+          />
         </span>
 
         <div style={{ flex: 1 }} />

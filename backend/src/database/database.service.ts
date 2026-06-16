@@ -4,15 +4,24 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { MongoClient, ObjectId } from 'mongodb';
 import { WorkspaceService } from '../workspace/workspace.service';
+import * as mysql from 'mysql2/promise';
+import { Pool as PgPool } from 'pg';
 
 export interface DbConnection {
   id: string;
   name: string;
-  type: 'sqlite' | 'mongodb';
+  type: 'sqlite' | 'mongodb' | 'mysql' | 'postgresql';
   // sqlite: relative file path inside project
   filePath?: string;
   // mongodb: connection URI
   uri?: string;
+  dbName?: string;
+  // mysql/postgresql fields
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
   createdAt: string;
 }
 
@@ -290,6 +299,102 @@ export class DatabaseService {
       return { success: true, deletedCount: result.deletedCount };
     } finally {
       if (client) await client.close().catch(() => {});
+    }
+  }
+
+  // ─── MySQL / PostgreSQL ───────────────────────────────────────────────────────
+
+  async externalDbTest(conn: DbConnection): Promise<{ success: boolean; message: string }> {
+    try {
+      if (conn.type === 'mysql') {
+        const connection = await mysql.createConnection({
+          host: conn.host, port: conn.port || 3306,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectTimeout: 5000,
+        });
+        await connection.ping();
+        await connection.end();
+      } else if (conn.type === 'postgresql') {
+        const pool = new PgPool({
+          host: conn.host, port: conn.port || 5432,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectionTimeoutMillis: 5000,
+        });
+        const client = await pool.connect();
+        await client.query('SELECT 1');
+        client.release();
+        await pool.end();
+      }
+      return { success: true, message: 'Connection successful!' };
+    } catch (e: any) {
+      throw new HttpException(`Connection failed: ${e?.message || e}`, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
+  async externalDbTables(conn: DbConnection): Promise<string[]> {
+    try {
+      if (conn.type === 'mysql') {
+        const connection = await mysql.createConnection({
+          host: conn.host, port: conn.port || 3306,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectTimeout: 5000,
+        });
+        const [rows] = await connection.execute<any[]>('SHOW TABLES');
+        await connection.end();
+        return (rows as any[]).map((r: any) => Object.values(r)[0] as string);
+      } else if (conn.type === 'postgresql') {
+        const pool = new PgPool({
+          host: conn.host, port: conn.port || 5432,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectionTimeoutMillis: 5000,
+        });
+        const client = await pool.connect();
+        const result = await client.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name`);
+        client.release();
+        await pool.end();
+        return result.rows.map((r: any) => r.table_name);
+      }
+      throw new HttpException('Unsupported DB type', HttpStatus.BAD_REQUEST);
+    } catch (e: any) {
+      if (e instanceof HttpException) throw e;
+      throw new HttpException(`Failed to list tables: ${e?.message || e}`, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  async externalDbQuery(conn: DbConnection, queryStr: string): Promise<any[]> {
+    const trimmed = queryStr.trim();
+    const isSelect = /^SELECT\b/i.test(trimmed);
+    const safeQuery = isSelect
+      ? ((/\bLIMIT\b/i.test(trimmed) ? trimmed : `${trimmed.replace(/;+$/, '')} LIMIT 500`))
+      : trimmed;
+    try {
+      if (conn.type === 'mysql') {
+        const connection = await mysql.createConnection({
+          host: conn.host, port: conn.port || 3306,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectTimeout: 8000,
+        });
+        const [rows] = await connection.execute<any[]>(safeQuery);
+        await connection.end();
+        if (Array.isArray(rows)) return rows as any[];
+        return [{ Status: 'Query executed successfully', AffectedRows: (rows as any).affectedRows ?? 0 }];
+      } else if (conn.type === 'postgresql') {
+        const pool = new PgPool({
+          host: conn.host, port: conn.port || 5432,
+          database: conn.database, user: conn.user, password: conn.password,
+          connectionTimeoutMillis: 8000,
+        });
+        const client = await pool.connect();
+        const result = await client.query(safeQuery);
+        client.release();
+        await pool.end();
+        if (result.rows && result.rows.length >= 0) return result.rows;
+        return [{ Status: 'Query executed successfully', AffectedRows: result.rowCount ?? 0 }];
+      }
+      throw new HttpException('Unsupported DB type', HttpStatus.BAD_REQUEST);
+    } catch (e: any) {
+      if (e instanceof HttpException) throw e;
+      throw new HttpException(`Query failed: ${e?.message || e}`, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }

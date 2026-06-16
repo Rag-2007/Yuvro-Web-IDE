@@ -4,6 +4,38 @@ import { File, Folder, ChevronRight, ChevronDown, Plus, Trash2, Edit2 } from 'lu
 import { createDir, createFile, deletePath, renamePath } from '../api';
 import QuickInput from './QuickInput';
 
+// ─── Language-aware file icon colors ─────────────────────────────────────────
+function getFileColor(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    html: '#e34c26', htm: '#e34c26',
+    css: '#264de4', scss: '#cc6699', sass: '#cc6699', less: '#1d365d',
+    js: '#f7df1e', jsx: '#61dafb', mjs: '#f7df1e',
+    ts: '#3178c6', tsx: '#61dafb',
+    py: '#3572A5', pyw: '#3572A5',
+    json: '#cbcb41', jsonc: '#cbcb41',
+    md: '#083fa1', mdx: '#083fa1',
+    yml: '#cb171e', yaml: '#cb171e',
+    sh: '#89e051', bash: '#89e051', zsh: '#89e051',
+    sql: '#e38c00', db: '#e38c00', sqlite: '#e38c00', sqlite3: '#e38c00',
+    txt: '#8b949e', env: '#ecd53f', gitignore: '#f14e32',
+    rs: '#dea584', go: '#00acd7', java: '#b07219', php: '#4f5d95',
+    rb: '#701516', c: '#555555', cpp: '#f34b7d', cs: '#178600',
+    vue: '#41b883', svelte: '#ff3e00',
+    png: '#a78bfa', jpg: '#a78bfa', jpeg: '#a78bfa', gif: '#a78bfa',
+    svg: '#ffb13b', ico: '#a78bfa', webp: '#a78bfa',
+    pdf: '#f40f02', zip: '#f59e0b', tar: '#f59e0b', gz: '#f59e0b',
+    dockerfile: '#0db7ed', toml: '#9c4221', xml: '#0060ac',
+    lock: '#6b7280', requirements: '#3572A5',
+  };
+  return map[ext] ?? 'var(--text-muted)';
+}
+
+function FileIcon({ name }: { name: string }) {
+  const color = getFileColor(name);
+  return <File size={16} color={color} />;
+}
+
 interface FileNode {
   id: string;
   name: string;
@@ -111,7 +143,7 @@ export default function FileTreeComponent({
           node.isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />
         ) : <span style={{ width: 14, display: 'inline-block' }}></span>}
 
-        {isFolder ? <Folder size={16} color="var(--accent)" /> : <File size={16} color="var(--text-muted)" />}
+        {isFolder ? <Folder size={16} color="var(--accent)" /> : <FileIcon name={node.data.name} />}
         <span>{node.data.name}</span>
       </div>
     );

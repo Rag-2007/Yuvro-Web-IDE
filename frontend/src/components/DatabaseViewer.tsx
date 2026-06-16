@@ -5,6 +5,7 @@ import {
   sqliteInsert, sqliteDelete,
   getConnections, addConnection, removeConnection,
   mongoCollections, mongoFind, mongoInsert, mongoDelete, mongoTest,
+  externalDbTest, externalDbTables, externalDbQuery,
 } from '../api';
 import {
   Database, Play, Table2, RefreshCw, ChevronRight, ChevronDown,
@@ -137,7 +138,20 @@ function DataGrid({ rows, columns, onDelete }: {
 
 interface ColumnInfo { cid: number; name: string; type: string; notnull: number; pk: number; }
 interface TableSchema { name: string; columns: ColumnInfo[]; expanded: boolean; }
-interface DbConnection { id: string; name: string; type: 'sqlite' | 'mongodb'; filePath?: string; uri?: string; dbName?: string; createdAt: string; }
+interface DbConnection {
+  id: string;
+  name: string;
+  type: 'sqlite' | 'mongodb' | 'mysql' | 'postgresql';
+  filePath?: string;
+  uri?: string;
+  dbName?: string;
+  host?: string;
+  port?: number;
+  database?: string;
+  user?: string;
+  password?: string;
+  createdAt: string;
+}
 
 interface DatabaseViewerProps { projectName: string; }
 
@@ -254,6 +268,116 @@ function AddMongoModal({ projectName, onSave, onClose }: {
   );
 }
 
+// ─── Add External Database Connection Modal ──────────────────────────────────
+function AddExternalDbModal({ projectName, onSave, onClose }: {
+  projectName: string;
+  onSave: (conn: DbConnection) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<'mysql' | 'postgresql'>('mysql');
+  const [host, setHost] = useState('localhost');
+  const [port, setPort] = useState(3306);
+  const [database, setDatabase] = useState('');
+  const [user, setUser] = useState('');
+  const [password, setPassword] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const handleTypeChange = (newType: 'mysql' | 'postgresql') => {
+    setType(newType);
+    setPort(newType === 'mysql' ? 3306 : 5432);
+  };
+
+  const handleTest = async () => {
+    setTesting(true); setTestResult(null);
+    try {
+      const connData = { type, host, port: Number(port), database, user, password };
+      const res = await externalDbTest(projectName, connData);
+      setTestResult({ ok: true, msg: res.message || 'Connected successfully!' });
+    } catch (e: any) {
+      setTestResult({ ok: false, msg: e?.response?.data?.message || 'Connection failed' });
+    }
+    setTesting(false);
+  };
+
+  const handleSave = async () => {
+    if (!name.trim() || !host.trim() || !database.trim() || !user.trim()) return;
+    try {
+      const conn = await addConnection(projectName, {
+        name: name.trim(),
+        type,
+        host: host.trim(),
+        port: Number(port),
+        database: database.trim(),
+        user: user.trim(),
+        password,
+      });
+      onSave(conn);
+    } catch {}
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-card" onClick={e => e.stopPropagation()} style={{ width: 480 }}>
+        <div className="modal-header">
+          <Link2 size={14} /> <span>Add External Database</span>
+          <button className="modal-close" onClick={onClose}><X size={14} /></button>
+        </div>
+        <div className="modal-body">
+          <div className="modal-field">
+            <label>Connection Name</label>
+            <input className="input" placeholder="e.g. Production MySQL" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div className="modal-field">
+            <label>Database Type</label>
+            <select className="input" style={{ width: '100%' }} value={type} onChange={e => handleTypeChange(e.target.value as any)}>
+              <option value="mysql">MySQL</option>
+              <option value="postgresql">PostgreSQL</option>
+            </select>
+          </div>
+          <div className="modal-field">
+            <label>Host</label>
+            <input className="input" placeholder="localhost" value={host} onChange={e => setHost(e.target.value)} />
+          </div>
+          <div className="modal-field">
+            <label>Port</label>
+            <input className="input" type="number" placeholder={type === 'mysql' ? '3306' : '5432'} value={port} onChange={e => setPort(Number(e.target.value))} />
+          </div>
+          <div className="modal-field">
+            <label>Database Name</label>
+            <input className="input" placeholder="mydb" value={database} onChange={e => setDatabase(e.target.value)} />
+          </div>
+          <div className="modal-field">
+            <label>User</label>
+            <input className="input" placeholder="root" value={user} onChange={e => setUser(e.target.value)} />
+          </div>
+          <div className="modal-field">
+            <label>Password</label>
+            <input className="input" type="password" placeholder="password" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          {testResult && (
+            <div className={`modal-test-result ${testResult.ok ? 'ok' : 'fail'}`}>
+              {testResult.ok ? <Check size={12} /> : <AlertCircle size={12} />}
+              <span>{testResult.msg}</span>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="button secondary" onClick={handleTest} disabled={testing}>
+            {testing ? <Loader size={13} className="spin" /> : <Link2 size={13} />}
+            Test Connection
+          </button>
+          <button className="button" onClick={handleSave} disabled={!name.trim() || !host.trim() || !database.trim() || !user.trim()}>
+            <Save size={13} /> Save Connection
+          </button>
+          <button className="button secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Add Mongo Document Modal ─────────────────────────────────────────────────
 function AddMongoDocModal({ onSave, onClose }: { onSave: (doc: Record<string, any>) => void; onClose: () => void }) {
   const [json, setJson] = useState('{\n  \n}');
@@ -295,7 +419,7 @@ function AddMongoDocModal({ onSave, onClose }: { onSave: (doc: Record<string, an
 
 // ─── Main DatabaseViewer ──────────────────────────────────────────────────────
 export default function DatabaseViewer({ projectName }: DatabaseViewerProps) {
-  const [dbTab, setDbTab] = useState<'sqlite' | 'mongodb'>('sqlite');
+  const [dbTab, setDbTab] = useState<'sqlite' | 'mongodb' | 'external'>('sqlite');
 
   // SQLite state
   const [dbFiles, setDbFiles] = useState<string[]>([]);
@@ -328,6 +452,22 @@ export default function DatabaseViewer({ projectName }: DatabaseViewerProps) {
   const [mongoError, setMongoError] = useState('');
   const [showAddMongo, setShowAddMongo] = useState(false);
   const [showAddDoc, setShowAddDoc] = useState(false);
+
+  // External DB state
+  const [extConnections, setExtConnections] = useState<DbConnection[]>([]);
+  const [selectedExtConn, setSelectedExtConn] = useState<DbConnection | null>(null);
+  const [extTables, setExtTables] = useState<string[]>([]);
+  const [selectedExtTable, setSelectedExtTable] = useState<string>('');
+  const [extRowData, setExtRowData] = useState<Record<string, unknown>[]>([]);
+  const [extColDefs, setExtColDefs] = useState<Record<string, unknown>[]>([]);
+  const [loadingExt, setLoadingExt] = useState(false);
+  const [extError, setExtError] = useState('');
+  const [showAddExt, setShowAddExt] = useState(false);
+  const [extQuery, setExtQuery] = useState('');
+  const [extQueryResult, setExtQueryResult] = useState<Record<string, unknown>[]>([]);
+  const [extQueryColDefs, setExtQueryColDefs] = useState<Record<string, unknown>[]>([]);
+  const [extQueryMode, setExtQueryMode] = useState(false);
+  const [runningExtQuery, setRunningExtQuery] = useState(false);
 
   const dbBase64 = selectedDb ? btoa(selectedDb) : '';
 
@@ -458,15 +598,67 @@ export default function DatabaseViewer({ projectName }: DatabaseViewerProps) {
       : <Type size={11} className="col-type-icon txt" />;
   };
 
-  // ── MongoDB ───────────────────────────────────────────────────────────────
+  // ── Connections ─────────────────────────────────────────────────────────────
   const loadConnections = useCallback(async () => {
     try {
       const conns: DbConnection[] = await getConnections(projectName);
       setConnections(conns.filter(c => c.type === 'mongodb'));
-    } catch { setConnections([]); }
+      setExtConnections(conns.filter(c => c.type === 'mysql' || c.type === 'postgresql'));
+    } catch {
+      setConnections([]);
+      setExtConnections([]);
+    }
   }, [projectName]);
 
-  useEffect(() => { if (dbTab === 'mongodb') loadConnections(); }, [dbTab, loadConnections]);
+  useEffect(() => { if (dbTab === 'mongodb' || dbTab === 'external') loadConnections(); }, [dbTab, loadConnections]);
+
+  // ── External DB (MySQL / PostgreSQL) ─────────────────────────────────────────
+  const loadExtTables = async (conn: DbConnection) => {
+    setSelectedExtConn(conn); setExtTables([]); setSelectedExtTable(''); setExtRowData([]); setExtColDefs([]);
+    setExtQueryMode(false); setExtQuery('');
+    setLoadingExt(true); setExtError('');
+    try {
+      const tables: string[] = await externalDbTables(projectName, conn);
+      setExtTables(tables);
+      if (tables.length > 0) await loadExtTableData(conn, tables[0]);
+    } catch (e: any) { setExtError(e?.response?.data?.message || 'Failed to list tables.'); }
+    setLoadingExt(false);
+  };
+
+  const loadExtTableData = async (conn: DbConnection, tableName: string) => {
+    setSelectedExtTable(tableName); setExtQueryMode(false);
+    const sql = `SELECT * FROM ${conn.type === 'mysql' ? `\`${tableName}\`` : `"${tableName}"`} LIMIT 100`;
+    setExtQuery(sql);
+    setLoadingExt(true); setExtRowData([]); setExtColDefs([]);
+    try {
+      const data = await externalDbQuery(projectName, conn, sql);
+      applyToGrid(data, setExtColDefs, setExtRowData);
+    } catch (e: any) { setExtError(e?.response?.data?.message || 'Failed to load table data.'); }
+    setLoadingExt(false);
+  };
+
+  const runExtQuery = async () => {
+    if (!extQuery.trim() || !selectedExtConn) return;
+    setRunningExtQuery(true); setExtError('');
+    try {
+      const data = await externalDbQuery(projectName, selectedExtConn, extQuery.trim());
+      applyToGrid(data, setExtQueryColDefs, setExtQueryResult);
+      setExtQueryMode(true);
+    } catch (e: any) {
+      setExtError(e?.response?.data?.message || 'Query execution failed.');
+      setExtQueryMode(false);
+    }
+    setRunningExtQuery(false);
+  };
+
+  const handleExtQueryKey = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runExtQuery(); }
+  };
+
+  const handleRemoveExtConn = async (connId: string) => {
+    if (!confirm('Remove this connection?')) return;
+    try { await removeConnection(projectName, connId); await loadConnections(); setSelectedExtConn(null); } catch {}
+  };
 
   const loadMongoCollections = async (conn: DbConnection) => {
     setSelectedConn(conn); setMongoColls([]); setSelectedColl(''); setMongoDocs([]); setMongoColDefs([]);
@@ -540,6 +732,13 @@ export default function DatabaseViewer({ projectName }: DatabaseViewerProps) {
           onClick={() => setDbTab('mongodb')}
         >
           <Layers size={12} /> MongoDB
+        </button>
+        <button
+          id="dbv-tab-external"
+          className={`dbv-type-tab ${dbTab === 'external' ? 'active' : ''}`}
+          onClick={() => setDbTab('external')}
+        >
+          <Link2 size={12} /> External DB
         </button>
       </div>
 
@@ -821,6 +1020,140 @@ export default function DatabaseViewer({ projectName }: DatabaseViewerProps) {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── External DB Panel ────────────────────────────────────────────── */}
+      {dbTab === 'external' && (
+        <>
+          {showAddExt && (
+            <AddExternalDbModal
+              projectName={projectName}
+              onSave={(conn) => { setExtConnections(c => [...c, conn]); setShowAddExt(false); }}
+              onClose={() => setShowAddExt(false)}
+            />
+          )}
+
+          <div className="dbv-inner">
+            <div className="dbv-sidebar">
+              <div className="dbv-section-hdr">
+                <Layers size={13} /><span>Connections</span>
+                <button className="dbv-icon-btn" onClick={() => setShowAddExt(true)} title="Add external connection"><Plus size={11} /></button>
+              </div>
+
+              {extConnections.length === 0 ? (
+                <div className="dbv-mongo-empty">
+                  <Link2 size={22} />
+                  <span>No External DB connections</span>
+                  <button className="button" style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.3rem 0.7rem' }} onClick={() => setShowAddExt(true)}>
+                    <Plus size={12} /> Add Connection
+                  </button>
+                </div>
+              ) : (
+                <div className="dbv-file-list">
+                  {extConnections.map(conn => (
+                    <div
+                      key={conn.id}
+                      className={`dbv-file-item ${selectedExtConn?.id === conn.id ? 'active' : ''}`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => loadExtTables(conn)}
+                    >
+                      <Layers size={12} />
+                      <span className="dbv-file-name">{conn.name}</span>
+                      <span className="dbv-file-path" style={{ textTransform: 'uppercase', fontSize: '0.65rem', marginLeft: '0.25rem' }}>({conn.type})</span>
+                      <button
+                        className="dbv-icon-btn"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={e => { e.stopPropagation(); handleRemoveExtConn(conn.id); }}
+                        title="Remove connection"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedExtConn && extTables.length > 0 && (
+                <>
+                  <div className="dbv-section-hdr">
+                    <Table2 size={13} /><span>Tables ({extTables.length})</span>
+                  </div>
+                  <div className="dbv-table-list">
+                    {extTables.map(table => (
+                      <button
+                        key={table}
+                        className={`dbv-table-item ${selectedExtTable === table && !extQueryMode ? 'active' : ''}`}
+                        onClick={() => selectedExtConn && loadExtTableData(selectedExtConn, table)}
+                      >
+                        <Table2 size={12} />
+                        <span>{table}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="dbv-main">
+              {extError && (
+                <div className="dbv-error-bar">
+                  <AlertCircle size={13} /><span>{extError}</span>
+                  <button onClick={() => setExtError('')}>×</button>
+                </div>
+              )}
+
+              {selectedExtConn && (
+                <div className="dbv-breadcrumb">
+                  <Layers size={12} />
+                  <span>{selectedExtConn.name}</span>
+                  <span className="dbv-file-path">({selectedExtConn.database})</span>
+                  {selectedExtTable && !extQueryMode && <><ChevronRight size={11} /><Table2 size={12} /><span>{selectedExtTable}</span></>}
+                  {extQueryMode && <><ChevronRight size={11} /><span className="dbv-query-badge">SQL Result</span></>}
+                  {loadingExt && <Loader size={12} className="spin dbv-breadcrumb-spin" />}
+                </div>
+              )}
+
+              <div className="dbv-grid-wrap">
+                {loadingExt || runningExtQuery ? (
+                  <div className="dbv-empty"><Loader size={20} className="spin" /> Loading…</div>
+                ) : (extQueryMode ? extQueryResult : extRowData).length > 0 || (extQueryMode ? extQueryColDefs : extColDefs).length > 0 ? (
+                  <DataGrid
+                    rows={extQueryMode ? extQueryResult : extRowData}
+                    columns={(extQueryMode ? extQueryColDefs : extColDefs) as { field: string; headerName: string }[]}
+                  />
+                ) : (
+                  <div className="dbv-empty">
+                    {!selectedExtConn ? 'Select or add an External DB connection from the left panel' :
+                      !selectedExtTable && !extQueryMode ? 'Select a table to view data' :
+                        'No columns or rows returned'}
+                  </div>
+                )}
+              </div>
+
+              {selectedExtConn && (
+                <div className="dbv-query-section">
+                  <div className="dbv-query-toolbar">
+                    <span className="dbv-query-label">SQL Query</span>
+                    <span className="dbv-query-hint-txt">Ctrl+Enter to run</span>
+                    <button className="button dbv-run-btn" onClick={runExtQuery} disabled={runningExtQuery || !extQuery.trim()} title="Run Query (Ctrl+Enter)">
+                      {runningExtQuery ? <Loader size={13} className="spin" /> : <Play size={13} />}
+                      {runningExtQuery ? 'Running…' : 'Run'}
+                    </button>
+                  </div>
+                  <textarea
+                    className="dbv-query-editor"
+                    value={extQuery}
+                    onChange={e => setExtQuery(e.target.value)}
+                    onKeyDown={handleExtQueryKey}
+                    placeholder={`SELECT * FROM table_name LIMIT 100`}
+                    spellCheck={false}
+                    rows={3}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </>

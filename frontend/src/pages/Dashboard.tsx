@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getProjects, deleteProject, createProject, cloneProject, uploadProject } from '../api';
+import { getProjects, deleteProject, createProject, cloneProject, uploadProject, createFile, executeQuery, addConnection } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { Folder, Plus, GitBranch, Upload, ChevronRight, ArrowLeft, Trash2, LogOut, User } from 'lucide-react';
 import QuickInput from '../components/QuickInput';
@@ -15,19 +15,83 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Add Database flow state
+  const [addDb, setAddDb] = useState(false);
+  const [dbType, setDbType] = useState<'sqlite' | 'mysql' | 'postgresql' | 'mongodb'>('sqlite');
+  const [sqliteName, setSqliteName] = useState('project.db');
+  const [dbConnName, setDbConnName] = useState('My DB');
+  const [dbHost, setDbHost] = useState('localhost');
+  const [dbPort, setDbPort] = useState(3306);
+  const [dbDatabase, setDbDatabase] = useState('');
+  const [dbUser, setDbUser] = useState('root');
+  const [dbPassword, setDbPassword] = useState('');
+  const [dbMongoUri, setDbMongoUri] = useState('mongodb://localhost:27017');
+
   const loadProjects = () => {
     getProjects().then(data => setProjects(data)).catch(() => setProjects([]));
   };
 
   useEffect(() => { loadProjects(); }, []);
 
-  const resetForm = () => { setProjectName(''); setRepoUrl(''); setFile(null); setError(''); };
+  const resetForm = () => {
+    setProjectName('');
+    setRepoUrl('');
+    setFile(null);
+    setError('');
+    setAddDb(false);
+    setDbType('sqlite');
+    setSqliteName('project.db');
+    setDbConnName('My DB');
+    setDbHost('localhost');
+    setDbPort(3306);
+    setDbDatabase('');
+    setDbUser('root');
+    setDbPassword('');
+    setDbMongoUri('mongodb://localhost:27017');
+  };
 
   const handleCreate = async () => {
-    if (!projectName.trim()) return;
+    const pName = projectName.trim();
+    if (!pName) return;
     setLoading(true); setError('');
-    try { await createProject(projectName.trim()); onSelectProject(projectName.trim()); }
-    catch { setError('Failed to create project. Name may already exist.'); }
+    try {
+      await createProject(pName);
+      
+      if (addDb) {
+        if (dbType === 'sqlite') {
+          const dbName = sqliteName.trim() || 'project.db';
+          const dbB64 = btoa(dbName);
+          await createFile(pName, dbB64);
+          try {
+            await executeQuery(pName, dbB64, "CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, completed INTEGER DEFAULT 0)");
+            await executeQuery(pName, dbB64, "INSERT INTO tasks (title, completed) VALUES ('Verify IDE features', 0), ('Show database connections', 1)");
+          } catch (e) {
+            console.error('Failed to pre-seed SQLite table:', e);
+          }
+        } else if (dbType === 'mysql' || dbType === 'postgresql') {
+          await addConnection(pName, {
+            name: dbConnName.trim() || 'My External DB',
+            type: dbType,
+            host: dbHost.trim() || 'localhost',
+            port: Number(dbPort),
+            database: dbDatabase.trim(),
+            user: dbUser.trim(),
+            password: dbPassword,
+          });
+        } else if (dbType === 'mongodb') {
+          await addConnection(pName, {
+            name: dbConnName.trim() || 'My Mongo DB',
+            type: 'mongodb',
+            uri: dbMongoUri.trim() || 'mongodb://localhost:27017',
+            dbName: dbDatabase.trim() || 'admin',
+          });
+        }
+      }
+      onSelectProject(pName);
+    }
+    catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to create project. Name may already exist.');
+    }
     setLoading(false);
   };
 
@@ -155,8 +219,93 @@ export default function Dashboard({ onSelectProject }: { onSelectProject: (name:
               <label>Project Name</label>
               <input className="input" value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="my-new-project" onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} autoFocus />
             </div>
-            {error && <div className="db-error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
-            <div className="form-actions">
+
+            {/* Optional Database Section */}
+            <div style={{ marginTop: '1.25rem', padding: '1rem', border: '1px solid var(--border)', borderRadius: '6px', background: 'rgba(255, 255, 255, 0.02)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontWeight: 500, fontSize: '0.85rem' }}>
+                <input type="checkbox" checked={addDb} onChange={e => setAddDb(e.target.checked)} style={{ cursor: 'pointer' }} />
+                <span>Initialize Project with Database</span>
+              </label>
+
+              {addDb && (
+                <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                  <div className="form-group">
+                    <label>Database Type</label>
+                    <select className="input" value={dbType} onChange={e => {
+                      const t = e.target.value as any;
+                      setDbType(t);
+                      if (t === 'mysql') setDbPort(3306);
+                      else if (t === 'postgresql') setDbPort(5432);
+                    }} style={{ width: '100%' }}>
+                      <option value="sqlite">SQLite (local file)</option>
+                      <option value="mysql">MySQL (external)</option>
+                      <option value="postgresql">PostgreSQL (external)</option>
+                      <option value="mongodb">MongoDB (external)</option>
+                    </select>
+                  </div>
+
+                  {dbType === 'sqlite' && (
+                    <div className="form-group">
+                      <label>Database File Name</label>
+                      <input className="input" value={sqliteName} onChange={e => setSqliteName(e.target.value)} placeholder="project.db" />
+                    </div>
+                  )}
+
+                  {(dbType === 'mysql' || dbType === 'postgresql') && (
+                    <>
+                      <div className="form-group">
+                        <label>Connection Name</label>
+                        <input className="input" value={dbConnName} onChange={e => setDbConnName(e.target.value)} placeholder="e.g. My External DB" />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '0.5rem' }}>
+                        <div className="form-group">
+                          <label>Host</label>
+                          <input className="input" value={dbHost} onChange={e => setDbHost(e.target.value)} placeholder="localhost" />
+                        </div>
+                        <div className="form-group">
+                          <label>Port</label>
+                          <input className="input" type="number" value={dbPort} onChange={e => setDbPort(Number(e.target.value))} />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Database Name</label>
+                        <input className="input" value={dbDatabase} onChange={e => setDbDatabase(e.target.value)} placeholder="mydb" />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                        <div className="form-group">
+                          <label>User</label>
+                          <input className="input" value={dbUser} onChange={e => setDbUser(e.target.value)} placeholder="root" />
+                        </div>
+                        <div className="form-group">
+                          <label>Password</label>
+                          <input className="input" type="password" value={dbPassword} onChange={e => setDbPassword(e.target.value)} placeholder="password" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {dbType === 'mongodb' && (
+                    <>
+                      <div className="form-group">
+                        <label>Connection Name</label>
+                        <input className="input" value={dbConnName} onChange={e => setDbConnName(e.target.value)} placeholder="e.g. My MongoDB Connection" />
+                      </div>
+                      <div className="form-group">
+                        <label>Connection URI</label>
+                        <input className="input" value={dbMongoUri} onChange={e => setDbMongoUri(e.target.value)} placeholder="mongodb://localhost:27017" />
+                      </div>
+                      <div className="form-group">
+                        <label>Database Name</label>
+                        <input className="input" value={dbDatabase} onChange={e => setDbDatabase(e.target.value)} placeholder="mydb" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {error && <div className="db-error" style={{ margin: '0.75rem 0' }}>{error}</div>}
+            <div className="form-actions" style={{ marginTop: '1.25rem' }}>
               <button className="button" onClick={handleCreate} disabled={loading || !projectName.trim()}>{loading ? 'Creating...' : 'Create Project'}</button>
               <button className="button secondary" onClick={() => setView('list')}>Cancel</button>
             </div>

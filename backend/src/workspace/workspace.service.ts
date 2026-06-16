@@ -96,7 +96,7 @@ export class WorkspaceService {
       const entries = fs.readdirSync(dirPath, { withFileTypes: true });
       const tree: TreeNode[] = [];
       for (const entry of entries) {
-        if (entry.name === '.git' || entry.name === 'node_modules') continue;
+        if (entry.name === '.git') continue;
         const fullPath = path.join(dirPath, entry.name);
         const relPath = path.join(relativePath, entry.name);
         const id = Buffer.from(relPath).toString('base64');
@@ -229,6 +229,19 @@ export class WorkspaceService {
       };
       return search(projectPath);
     };
+
+    // Fullstack check: If there's a frontend package.json AND a backend requirements.txt
+    const frontendPkg = findFile('frontend/package.json') || findFile('client/package.json');
+    const backendReq = findFile('backend/requirements.txt') || findFile('server/requirements.txt');
+    if (frontendPkg && backendReq) {
+      const frontDir = path.dirname(frontendPkg);
+      const backDir = path.dirname(backendReq);
+      return { 
+        command: `(cd "${backDir}" && uvicorn main:app --reload --host 0.0.0.0 --port 8000) & (cd "${frontDir}" && npm run dev)`, 
+        label: 'Fullstack App (React + FastAPI)' 
+      };
+    }
+
 
     const managePyPath = findFile('manage.py');
     if (managePyPath) {

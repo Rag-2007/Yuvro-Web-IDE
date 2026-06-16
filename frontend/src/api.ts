@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const API_URL = 'http://localhost:3000';
+export const API_URL = 'http://localhost:4000';
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -74,6 +74,13 @@ export const mongoUpdate = (project: string, uri: string, dbName: string, collec
 export const mongoDelete = (project: string, uri: string, dbName: string, collection: string, id: string) =>
   api.post(`/database/${project}/mongo/delete`, { uri, dbName, collection, id }).then(res => res.data);
 
+// ─── Database – External DB (MySQL/PostgreSQL) ────────────────────────────────
+export const externalDbTest = (project: string, conn: any) => api.post(`/database/${project}/external/test`, conn).then(res => res.data);
+export const externalDbTables = (project: string, conn: any) => api.post(`/database/${project}/external/tables`, conn).then(res => res.data);
+export const externalDbQuery = (project: string, conn: any, query: string) =>
+  api.post(`/database/${project}/external/query`, { conn, query }).then(res => res.data);
+
 // ─── Misc ─────────────────────────────────────────────────────────────────────
 export const detectRunCommand = (project: string) => api.get(`/workspace/${project}/detect-run`).then(res => res.data);
 export const getLaunchConfig = () => api.get('/workspace/launch-config').then(res => res.data);
+

@@ -1,0 +1,30 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh}
+header{background:#161b22;border-bottom:1px solid #21262d;padding:.9rem 2rem;position:sticky;top:0;z-index:10}
+.header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:1.3rem;font-weight:700;color:#7c83fd}
+main{max-width:1100px;margin:2rem auto;padding:0 1.5rem}
+.btn{padding:.5rem 1rem;background:#7c83fd;color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;transition:background .2s}
+.btn:hover{background:#6c73ed}
+.btn.secondary{background:#21262d;color:#8b949e}
+.btn.secondary:hover{background:#30363d;color:#e6edf3}
+.btn.danger{background:#f85149}
+.btn.danger:hover{background:#da3633}
+.input{width:100%;padding:.6rem 1rem;background:#161b22;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:.88rem;outline:none;margin-bottom:.6rem;font-family:inherit}
+.input:focus{border-color:#7c83fd}
+.input::placeholder{color:#484f58}
+textarea.input{resize:vertical}
+.note-form{background:#161b22;border:1px solid #21262d;border-radius:12px;padding:1.4rem;margin-bottom:2rem}
+.form-actions{display:flex;gap:.5rem}
+.hidden{display:none}
+.notes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.1rem}
+.note-card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:1.2rem;transition:border-color .2s,transform .2s;animation:pop .25s ease;position:relative}
+@keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.note-card:hover{border-color:#30363d;transform:translateY(-2px)}
+.pin-badge{font-size:.7rem;color:#f59e0b;margin-bottom:.4rem;display:block}
+.note-title{font-size:.95rem;font-weight:700;margin-bottom:.5rem}
+.note-content{font-size:.82rem;color:#8b949e;line-height:1.55;margin-bottom:.75rem;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.note-date{font-size:.72rem;color:#484f58;margin-bottom:.75rem}
+.note-actions{display:flex;gap:.4rem}
+.note-actions button{padding:.28rem .65rem;font-size:.74rem;border-radius:6px}
+.loading,.empty{text-align:center;padding:3rem;color:#8b949e;grid-column:1/-1}

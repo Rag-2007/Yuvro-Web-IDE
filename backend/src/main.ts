@@ -7,6 +7,6 @@ async function bootstrap() {
   app.enableCors();
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 4000);
 }
 bootstrap().catch((err) => console.error(err));

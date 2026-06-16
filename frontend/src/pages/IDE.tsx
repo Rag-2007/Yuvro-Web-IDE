@@ -99,7 +99,14 @@ export default function IDE({ projectName, onBack }: { projectName: string; onBa
     if (!runCommand) return;
     setBottomTab('terminal');
     setBottomCollapsed(false);
-    setTimeout(() => { terminalRef.current?.runCommand(projectName, runCommand); setIsRunning(true); }, 100);
+    setTimeout(() => {
+      terminalRef.current?.runCommand(projectName, runCommand);
+      setIsRunning(true);
+    }, 100);
+    // Auto-switch to preview after server has time to start
+    setTimeout(() => {
+      setBottomTab('preview');
+    }, 3000);
   };
 
   const handleStop = () => { terminalRef.current?.stopCommand(); setIsRunning(false); };

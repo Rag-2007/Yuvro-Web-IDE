@@ -9,7 +9,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import * as pty from 'node-pty';
-import { spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { AuthService } from '../auth/auth.service';
 import * as os from 'os';
@@ -22,7 +23,6 @@ export class TerminalGateway
   server!: Server;
 
   private ptys: Map<string, pty.IPty> = new Map();
-  private runningProcs: Map<string, ChildProcess> = new Map();
   private lastRunArgs: Map<string, { project: string; command: string }> = new Map();
 
   constructor(
@@ -30,34 +30,11 @@ export class TerminalGateway
     private authService: AuthService,
   ) {}
 
-  private killProcessGroup(child: ChildProcess) {
-    if (!child || !child.pid) return;
-    const pid = child.pid;
-    try {
-      if (os.platform() === 'win32') {
-        spawn('taskkill', ['/pid', pid.toString(), '/f', '/t']);
-      } else {
-        process.kill(-pid, 'SIGINT');
-        setTimeout(() => {
-          try {
-            process.kill(-pid, 'SIGKILL');
-          } catch {}
-        }, 1000);
-      }
-    } catch (err) {
-      try { child.kill('SIGINT'); } catch {}
-    }
-  }
-
   private getUserId(client: Socket): string {
     const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.replace('Bearer ', '');
-    if (!token) {
-      throw new Error('Authentication required');
-    }
+    if (!token) throw new Error('Authentication required');
     const payload = this.authService.verifyToken(token);
-    if (!payload || !payload.sub) {
-      throw new Error('Invalid or expired token');
-    }
+    if (!payload || !payload.sub) throw new Error('Invalid or expired token');
     return payload.sub;
   }
 
@@ -66,13 +43,8 @@ export class TerminalGateway
   handleDisconnect(client: Socket) {
     const ptyProcess = this.ptys.get(client.id);
     if (ptyProcess) {
-      ptyProcess.kill();
+      try { ptyProcess.kill(); } catch {}
       this.ptys.delete(client.id);
-    }
-    const child = this.runningProcs.get(client.id);
-    if (child) {
-      this.killProcessGroup(child);
-      this.runningProcs.delete(client.id);
     }
     this.lastRunArgs.delete(client.id);
   }
@@ -89,16 +61,21 @@ export class TerminalGateway
         ? 'powershell.exe'
         : (process.env.SHELL || '/bin/zsh');
 
-      const env = { ...process.env };
-      delete env.PWD;
-      delete env.OLDPWD;
+      const env: Record<string, string> = {
+        ...process.env as Record<string, string>,
+        FORCE_COLOR: '1',
+        TERM: 'xterm-256color',
+        PYTHONUNBUFFERED: '1',
+      };
+      delete env['PWD'];
+      delete env['OLDPWD'];
 
       const ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
         cwd: projectPath,
-        env: env,
+        env: env as Record<string, string>,
       });
 
       this.ptys.set(client.id, ptyProcess);
@@ -109,15 +86,11 @@ export class TerminalGateway
 
       ptyProcess.onExit(() => {
         this.ptys.delete(client.id);
-        client.emit('process-exit');
       });
 
       return { status: 'started' };
     } catch (e) {
-      client.emit(
-        'terminal-output',
-        `Failed to start terminal: ${(e as Error).message}\r\n`,
-      );
+      client.emit('terminal-output', `Failed to start terminal: ${(e as Error).message}\r\n`);
     }
   }
 
@@ -150,76 +123,41 @@ export class TerminalGateway
   ) {
     try {
       const userId = this.getUserId(client);
-      const prev = this.runningProcs.get(client.id);
-      if (prev) {
-        this.killProcessGroup(prev);
-        this.runningProcs.delete(client.id);
-      }
-
+      const projectPath = this.workspaceService.getProjectPath(userId, data.project);
       this.lastRunArgs.set(client.id, { project: data.project, command: data.command });
 
-      const projectPath = this.workspaceService.getProjectPath(userId, data.project);
-      const shell = os.platform() === 'win32' ? 'cmd' : '/bin/sh';
-      const shellFlag = os.platform() === 'win32' ? '/c' : '-c';
+      const ptyProcess = this.ptys.get(client.id);
+      if (!ptyProcess) {
+        client.emit('terminal-output', '\r\n\x1b[31mTerminal not ready. Please wait...\x1b[0m\r\n');
+        return;
+      }
 
-      const env = {
-        ...process.env,
-        FORCE_COLOR: '1',
-        TERM: 'xterm-256color',
-        PYTHONUNBUFFERED: '1',
-      };
+      // Auto-install npm deps if package.json exists but node_modules doesn't
+      const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
+      const hasNodeModules = fs.existsSync(path.join(projectPath, 'node_modules'));
+      const needsInstall = hasPackageJson && !hasNodeModules;
 
-      const child = spawn(shell, [shellFlag, data.command], {
-        cwd: projectPath,
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        detached: true,
-      });
-
-      this.runningProcs.set(client.id, child);
-
-      client.emit('terminal-output', '\r\n');
-
-      const forward = (chunk: Buffer | string) => {
-        const text = chunk.toString().replace(/\r?\n/g, '\r\n');
-        client.emit('terminal-output', text);
-      };
-
-      child.stdout?.on('data', forward);
-      child.stderr?.on('data', forward);
-
-      child.on('close', (code) => {
-        this.runningProcs.delete(client.id);
-        const msg = code === 0
-          ? '\r\n\x1b[32m[Process exited successfully]\x1b[0m\r\n'
-          : `\r\n\x1b[31m[Process exited with code ${code}]\x1b[0m\r\n`;
-        client.emit('terminal-output', msg);
-        client.emit('process-exit');
-        const ptyProc = this.ptys.get(client.id);
-        if (ptyProc) ptyProc.write('\r');
-      });
-
-      child.on('error', (err) => {
-        this.runningProcs.delete(client.id);
-        client.emit('terminal-output', `\r\n\x1b[31mError: ${err.message}\x1b[0m\r\n`);
-        client.emit('process-exit');
-      });
+      if (needsInstall) {
+        client.emit('terminal-output', '\r\n\x1b[33m📦 Auto-installing dependencies first...\x1b[0m\r\n');
+        ptyProcess.write(`npm install && ${data.command}\r`);
+      } else {
+        ptyProcess.write(`${data.command}\r`);
+      }
     } catch (e) {
-      client.emit(
-        'terminal-output',
-        `\r\n\x1b[31mError: ${(e as Error).message}\x1b[0m\r\n`,
-      );
+      client.emit('terminal-output', `\r\n\x1b[31mError: ${(e as Error).message}\x1b[0m\r\n`);
       client.emit('process-exit');
     }
   }
 
   @SubscribeMessage('stop-command')
   handleStopCommand(@ConnectedSocket() client: Socket) {
-    const child = this.runningProcs.get(client.id);
-    if (child) {
-      this.killProcessGroup(child);
-      this.runningProcs.delete(client.id);
+    const ptyProcess = this.ptys.get(client.id);
+    if (ptyProcess) {
+      // Send Ctrl+C to kill whatever is running in the PTY
+      ptyProcess.write('\x03');
     }
+    // Tell frontend the process stopped
+    setTimeout(() => client.emit('process-exit'), 400);
   }
 
   @SubscribeMessage('restart-command')
@@ -227,16 +165,15 @@ export class TerminalGateway
     const lastArgs = this.lastRunArgs.get(client.id);
     if (!lastArgs) return;
 
-    const child = this.runningProcs.get(client.id);
-    if (child) {
-      this.killProcessGroup(child);
-      this.runningProcs.delete(client.id);
-    }
+    const ptyProcess = this.ptys.get(client.id);
+    if (!ptyProcess) return;
 
     client.emit('terminal-output', '\r\n\x1b[33m[Restarting...]\x1b[0m\r\n');
 
+    // Send Ctrl+C to stop current process, then re-run
+    ptyProcess.write('\x03');
     setTimeout(() => {
-      this.handleRunCommand(lastArgs, client);
+      ptyProcess.write(`${lastArgs.command}\r`);
     }, 800);
   }
 }
